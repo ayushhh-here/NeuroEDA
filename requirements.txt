@@ -1,0 +1,8 @@
+gradio>=4.0.0
+openai>=1.0.0
+pandas>=1.5.0
+numpy>=1.23.0
+plotly>=5.0.0
+statsmodels>=0.14.0
+fpdf2>=2.7.6
+kaleido==0.2.1
