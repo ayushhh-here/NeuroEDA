@@ -27,9 +27,10 @@ warnings.filterwarnings(
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 NVIDIA_API_KEY  = os.environ.get("NVIDIA_API_KEY", "")
 
+# Use fallback placeholder if key is not yet set in environment to allow UI to launch
 client = OpenAI(
     base_url = NVIDIA_BASE_URL,
-    api_key  = NVIDIA_API_KEY
+    api_key  = NVIDIA_API_KEY or "not_set"
 )
 
 # ============================================================
@@ -144,15 +145,25 @@ def profile_dataframe(df: pd.DataFrame) -> str:
 # ============================================================
 
 def generate_llm_insights(data_profile: str,
-                          dataset_name: str = "Dataset") -> str:
+                          dataset_name: str = "Dataset",
+                          analysis_goal: str = "") -> str:
     """
     Sends data profile to NVIDIA LLM.
     Returns detailed EDA insights in plain English.
     """
+    goal_instruction = ""
+    if analysis_goal and analysis_goal.strip():
+        goal_instruction = f"""
+USER-SPECIFIED ANALYSIS GOAL:
+"{analysis_goal.strip()}"
+Please prioritize and focus your analysis, patterns, and recommendations specifically around this goal while still covering the required sections below.
+"""
+
     prompt = f"""
 You are an expert Data Scientist performing Exploratory Data Analysis.
 
 Below is a complete statistical profile of the '{dataset_name}' dataset.
+{goal_instruction}
 Analyze it carefully and provide insights in this structure:
 
 {data_profile}
@@ -207,11 +218,20 @@ Write in clear professional English for a business audience.
 
 def generate_hypotheses(data_profile: str,
                         llm_insights: str,
-                        dataset_name: str = "Dataset") -> str:
+                        dataset_name: str = "Dataset",
+                        analysis_goal: str = "") -> str:
     """
     Generates 5 testable business hypotheses with
     causal reasoning, confounders, and statistical tests.
     """
+    goal_instruction = ""
+    if analysis_goal and analysis_goal.strip():
+        goal_instruction = f"""
+USER-SPECIFIED ANALYSIS GOAL:
+"{analysis_goal.strip()}"
+Ensure the 5 hypotheses directly investigate, test, and address questions relevant to this goal.
+"""
+
     prompt = f"""
 You are a senior Data Scientist analyzing the '{dataset_name}' dataset.
 
@@ -220,7 +240,7 @@ DATASET PROFILE:
 
 INITIAL INSIGHTS:
 {llm_insights}
-
+{goal_instruction}
 Generate exactly 5 testable business hypotheses.
 For each hypothesis provide:
 
@@ -486,7 +506,8 @@ def generate_pdf_report(dataset_name: str,
                         hypotheses: str,
                         chart_paths: list,
                         output_dir: str,
-                        numeric_stats: pd.DataFrame = None) -> str:
+                        numeric_stats: pd.DataFrame = None,
+                        analysis_goal: str = "") -> str:
     """
     Generates complete EDA PDF report.
     Returns path to the saved PDF file.
@@ -508,6 +529,13 @@ def generate_pdf_report(dataset_name: str,
     pdf.cell(0, 7,
              f"Generated: {datetime.now().strftime('%B %d, %Y')}",
              new_x="LMARGIN", new_y="NEXT", align="C")
+
+    if analysis_goal and analysis_goal.strip():
+        pdf.ln(2)
+        pdf.set_font("Helvetica", "I", 9)
+        pdf.set_text_color(60, 60, 60)
+        pdf.multi_cell(0, 5, sanitize_for_pdf(f"Analysis Goal: {analysis_goal.strip()}"), align="C")
+
     pdf.set_text_color(0, 0, 0)
     pdf.ln(6)
 
@@ -575,10 +603,10 @@ def generate_pdf_report(dataset_name: str,
 # MASTER PIPELINE FUNCTION
 # ============================================================
 
-def run_eda_agent(csv_file, progress=gr.Progress()):
+def run_eda_agent(csv_file, analysis_goal: str = "", progress=gr.Progress()):
     """
     Master function called by Gradio UI.
-    Runs full EDA pipeline on uploaded CSV.
+    Runs full EDA pipeline on uploaded CSV, conditioned on an optional user goal.
     """
     if csv_file is None:
         return (
@@ -586,7 +614,8 @@ def run_eda_agent(csv_file, progress=gr.Progress()):
             None, None
         )
 
-    if not NVIDIA_API_KEY:
+    current_key = os.environ.get("NVIDIA_API_KEY", "")
+    if not current_key or current_key == "not_set":
         return (
             "⚠️ NVIDIA_API_KEY is not set.\n\n"
             "Set it before running the app:\n"
@@ -595,6 +624,7 @@ def run_eda_agent(csv_file, progress=gr.Progress()):
             "Get a free key at https://build.nvidia.com",
             None, None
         )
+    client.api_key = current_key
 
     # Tracks which stage was in progress if something fails, so the
     # error message tells the user where the pipeline broke instead
@@ -627,12 +657,12 @@ def run_eda_agent(csv_file, progress=gr.Progress()):
         stage = "generating AI insights (NVIDIA API call)"
         progress(0.4, desc="Generating AI insights...")
         llm_insights = generate_llm_insights(
-            data_profile, dataset_name)
+            data_profile, dataset_name, analysis_goal)
 
         stage = "generating hypotheses (NVIDIA API call)"
         progress(0.6, desc="Generating hypotheses...")
         hypotheses = generate_hypotheses(
-            data_profile, llm_insights, dataset_name)
+            data_profile, llm_insights, dataset_name, analysis_goal)
 
         stage = "creating visualizations"
         progress(0.75, desc="Creating visualizations...")
@@ -650,14 +680,16 @@ def run_eda_agent(csv_file, progress=gr.Progress()):
             hypotheses    = hypotheses,
             chart_paths   = chart_paths,
             output_dir    = charts_dir,
-            numeric_stats = numeric_stats
+            numeric_stats = numeric_stats,
+            analysis_goal = analysis_goal
         )
 
         progress(1.0, desc="Done!")
 
         # Build output text
+        goal_display = f"\n🎯 Goal   : {analysis_goal.strip()}" if analysis_goal and analysis_goal.strip() else ""
         output_text = f"""✅ Dataset: {dataset_name}
-📊 Shape  : {df.shape[0]} rows × {df.shape[1]} columns
+📊 Shape  : {df.shape[0]} rows × {df.shape[1]} columns{goal_display}
 ⏱️ Status : Analysis Complete!
 
 {'='*60}
@@ -709,6 +741,11 @@ with gr.Blocks(
                 label      = "📁 Upload Your CSV File",
                 file_types = [".csv"]
             )
+            goal_input  = gr.Textbox(
+                label       = "🎯 Analysis Goal (Optional)",
+                placeholder = "e.g., Focus on factors driving customer churn, or identify high-risk loan applicants",
+                lines       = 2
+            )
             analyze_btn = gr.Button(
                 "🔍 Analyze My Dataset",
                 variant = "primary",
@@ -717,9 +754,10 @@ with gr.Blocks(
             gr.Markdown("""
 **How it works:**
 1. 📁 Upload any CSV
-2. 🔍 Click Analyze
-3. 📊 Get AI insights + charts
-4. 📄 Download PDF report
+2. 🎯 (Optional) Add your specific business goal
+3. 🔍 Click Analyze
+4. 📊 Get tailored AI insights + charts
+5. 📄 Download PDF report
 
 **Works with any domain:**
 - 🏥 Healthcare data
@@ -760,7 +798,7 @@ with gr.Blocks(
 
     analyze_btn.click(
         fn      = run_eda_agent,
-        inputs  = [csv_input],
+        inputs  = [csv_input, goal_input],
         outputs = [insights_out, gallery_out, pdf_out]
     )
 

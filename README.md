@@ -162,9 +162,10 @@ Gradio will print a local URL — open it in your browser.
 
 1. Open the Gradio UI in your browser
 2. Upload any CSV file (tested with Titanic, House Prices, customer datasets)
-3. Click **Analyze**
-4. Review the statistical profile, charts, and AI insights rendered in the UI
-5. Download the PDF report with the full analysis
+3. *(Optional)* Enter a custom **Analysis Goal** (e.g. *"Focus on customer churn drivers"*)
+4. Click **Analyze**
+5. Review the statistical profile, charts, and AI insights rendered in the UI
+6. Download the PDF report with the full analysis
 
 ---
 
@@ -220,7 +221,7 @@ This project gave me hands-on experience with:
 
 ## Roadmap
 
-- [ ] User-provided analysis goal (free-text prompt that conditions the LLM insights and hypotheses)
+- [x] User-provided analysis goal (free-text prompt that conditions the LLM insights and hypotheses)
 - [ ] Statistical (IQR / z-score) outlier detection in the profiler, not just LLM-inferred commentary
 - [ ] Box plots and pairplots in the visualization engine
 - [ ] User-selectable target column via dropdown (instead of a fixed name list)
