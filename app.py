@@ -289,7 +289,7 @@ def generate_visualizations(df: pd.DataFrame,
     numeric_cols = df.select_dtypes(
         include=[np.number]).columns.tolist()
     cat_cols     = df.select_dtypes(
-        include=["object"]).columns.tolist()
+        include=["object", "category"]).columns.tolist()
 
     # Detect target column — matched case-insensitively so a column
     # named "Target", "TARGET", or "SALEPRICE" is still recognized,
