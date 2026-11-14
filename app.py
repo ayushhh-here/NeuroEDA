@@ -600,6 +600,61 @@ def generate_pdf_report(dataset_name: str,
 
 
 # ============================================================
+# DATA LOADING & INSTANT PREVIEW HELPERS
+# ============================================================
+
+def load_csv_safely(csv_file) -> pd.DataFrame:
+    """Loads CSV with fallback encodings to prevent UnicodeDecodeError."""
+    try:
+        return pd.read_csv(csv_file)
+    except UnicodeDecodeError:
+        try:
+            return pd.read_csv(csv_file, encoding="latin1")
+        except Exception:
+            return pd.read_csv(csv_file, encoding="cp1252")
+
+
+def preview_dataset(csv_file):
+    """
+    Instantly extracts shape, missing values, memory usage,
+    and head(5) preview as soon as a CSV is uploaded.
+    """
+    if csv_file is None:
+        return (
+            gr.update(visible=False),
+            "", "", "", "",
+            pd.DataFrame()
+        )
+    try:
+        df = load_csv_safely(csv_file)
+        n_rows, n_cols = df.shape
+        total_cells = n_rows * n_cols
+        n_nulls = int(df.isnull().sum().sum())
+        null_pct = (n_nulls / total_cells * 100) if total_cells > 0 else 0
+        mem_bytes = df.memory_usage(deep=True).sum()
+        if mem_bytes < 1024 * 1024:
+            mem_str = f"{mem_bytes / 1024:.1f} KB"
+        else:
+            mem_str = f"{mem_bytes / (1024 * 1024):.1f} MB"
+
+        preview_df = df.head(5)
+        return (
+            gr.update(visible=True),
+            f"{n_rows:,}",
+            f"{n_cols:,}",
+            f"{n_nulls:,} ({null_pct:.1f}%)",
+            mem_str,
+            preview_df
+        )
+    except Exception as e:
+        return (
+            gr.update(visible=True),
+            "Error", "Error", "Error", str(e),
+            pd.DataFrame()
+        )
+
+
+# ============================================================
 # MASTER PIPELINE FUNCTION
 # ============================================================
 
@@ -632,7 +687,7 @@ def run_eda_agent(csv_file, analysis_goal: str = "", progress=gr.Progress()):
     stage = "loading the dataset"
     try:
         progress(0.1, desc="Loading dataset...")
-        df = pd.read_csv(csv_file)
+        df = load_csv_safely(csv_file)
         # splitext only strips the final extension, unlike a blind
         # .replace(".csv", "") which would mangle a name like
         # "2024.csv.backup.csv" by stripping every occurrence.
@@ -754,10 +809,11 @@ with gr.Blocks(
             gr.Markdown("""
 **How it works:**
 1. 📁 Upload any CSV
-2. 🎯 (Optional) Add your specific business goal
-3. 🔍 Click Analyze
-4. 📊 Get tailored AI insights + charts
-5. 📄 Download PDF report
+2. ⚡ Get instant data health & preview
+3. 🎯 (Optional) Add your specific business goal
+4. 🔍 Click Analyze
+5. 📊 Get tailored AI insights + charts
+6. 📄 Download PDF report
 
 **Works with any domain:**
 - 🏥 Healthcare data
@@ -767,6 +823,25 @@ with gr.Blocks(
 - 🎓 Education
 - 🏭 Manufacturing
             """)
+
+        with gr.Column(scale=2, visible=False) as preview_col:
+            gr.Markdown("### 📋 Instant Dataset Preview & Health Check")
+            with gr.Row():
+                stat_rows  = gr.Textbox(label="Total Rows", interactive=False)
+                stat_cols  = gr.Textbox(label="Total Columns", interactive=False)
+                stat_nulls = gr.Textbox(label="Missing Cells", interactive=False)
+                stat_mem   = gr.Textbox(label="Memory Usage", interactive=False)
+            preview_df = gr.DataFrame(
+                label="Raw Data Preview (First 5 Rows)",
+                interactive=False,
+                wrap=True
+            )
+
+    csv_input.change(
+        fn      = preview_dataset,
+        inputs  = [csv_input],
+        outputs = [preview_col, stat_rows, stat_cols, stat_nulls, stat_mem, preview_df]
+    )
 
     with gr.Tabs():
         with gr.TabItem("📊 Insights & Profile"):
