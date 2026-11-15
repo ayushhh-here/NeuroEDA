@@ -603,30 +603,48 @@ def generate_pdf_report(dataset_name: str,
 # DATA LOADING & INSTANT PREVIEW HELPERS
 # ============================================================
 
-def load_csv_safely(csv_file) -> pd.DataFrame:
-    """Loads CSV with fallback encodings to prevent UnicodeDecodeError."""
-    try:
-        return pd.read_csv(csv_file)
-    except UnicodeDecodeError:
+def load_dataset_safely(file_path: str) -> pd.DataFrame:
+    """
+    Loads dataset from CSV, Excel (.xlsx/.xls), or TSV files.
+    Applies fallback encodings to prevent decoding errors.
+    """
+    ext = os.path.splitext(str(file_path))[1].lower()
+    if ext in [".xlsx", ".xls"]:
+        return pd.read_excel(file_path)
+    elif ext in [".tsv", ".tab"]:
         try:
-            return pd.read_csv(csv_file, encoding="latin1")
-        except Exception:
-            return pd.read_csv(csv_file, encoding="cp1252")
+            return pd.read_csv(file_path, sep="\t")
+        except UnicodeDecodeError:
+            try:
+                return pd.read_csv(file_path, sep="\t", encoding="latin1")
+            except Exception:
+                return pd.read_csv(file_path, sep="\t", encoding="cp1252")
+    else:
+        try:
+            return pd.read_csv(file_path)
+        except UnicodeDecodeError:
+            try:
+                return pd.read_csv(file_path, encoding="latin1")
+            except Exception:
+                return pd.read_csv(file_path, encoding="cp1252")
+
+# Backward compatibility alias
+load_csv_safely = load_dataset_safely
 
 
-def preview_dataset(csv_file):
+def preview_dataset(dataset_file):
     """
     Instantly extracts shape, missing values, memory usage,
-    and head(5) preview as soon as a CSV is uploaded.
+    and head(5) preview as soon as a dataset is uploaded.
     """
-    if csv_file is None:
+    if dataset_file is None:
         return (
             gr.update(visible=False),
             "", "", "", "",
             pd.DataFrame()
         )
     try:
-        df = load_csv_safely(csv_file)
+        df = load_dataset_safely(dataset_file)
         n_rows, n_cols = df.shape
         total_cells = n_rows * n_cols
         n_nulls = int(df.isnull().sum().sum())
@@ -658,14 +676,14 @@ def preview_dataset(csv_file):
 # MASTER PIPELINE FUNCTION
 # ============================================================
 
-def run_eda_agent(csv_file, analysis_goal: str = "", progress=gr.Progress()):
+def run_eda_agent(dataset_file, analysis_goal: str = "", progress=gr.Progress()):
     """
     Master function called by Gradio UI.
-    Runs full EDA pipeline on uploaded CSV, conditioned on an optional user goal.
+    Runs full EDA pipeline on uploaded dataset (CSV, Excel, TSV), conditioned on an optional user goal.
     """
-    if csv_file is None:
+    if dataset_file is None:
         return (
-            "⚠️ Please upload a CSV file first.",
+            "⚠️ Please upload a dataset file first (.csv, .xlsx, or .tsv).",
             None, None
         )
 
@@ -687,12 +705,12 @@ def run_eda_agent(csv_file, analysis_goal: str = "", progress=gr.Progress()):
     stage = "loading the dataset"
     try:
         progress(0.1, desc="Loading dataset...")
-        df = load_csv_safely(csv_file)
+        df = load_dataset_safely(dataset_file)
         # splitext only strips the final extension, unlike a blind
         # .replace(".csv", "") which would mangle a name like
         # "2024.csv.backup.csv" by stripping every occurrence.
         dataset_name = os.path.splitext(
-            os.path.basename(csv_file))[0]
+            os.path.basename(dataset_file))[0]
 
         # Drop useless ID columns
         drop_cols = [
@@ -784,7 +802,7 @@ with gr.Blocks(
 
     gr.Markdown("""
 # 🤖 LLM-Powered Automated EDA Agent
-### Upload any CSV → Instant AI insights, charts & PDF report
+### Upload any CSV, Excel (.xlsx/.xls), or TSV → Instant AI insights, charts & PDF report
 ---
 **Powered by:** NVIDIA API (Llama 3.1) + Plotly + Gradio  
 
@@ -792,9 +810,9 @@ with gr.Blocks(
 
     with gr.Row():
         with gr.Column(scale=1):
-            csv_input   = gr.File(
-                label      = "📁 Upload Your CSV File",
-                file_types = [".csv"]
+            dataset_input = gr.File(
+                label      = "📁 Upload Dataset (CSV, Excel, TSV)",
+                file_types = [".csv", ".xlsx", ".xls", ".tsv", ".tab"]
             )
             goal_input  = gr.Textbox(
                 label       = "🎯 Analysis Goal (Optional)",
@@ -808,7 +826,7 @@ with gr.Blocks(
             )
             gr.Markdown("""
 **How it works:**
-1. 📁 Upload any CSV
+1. 📁 Upload any CSV, Excel, or TSV file
 2. ⚡ Get instant data health & preview
 3. 🎯 (Optional) Add your specific business goal
 4. 🔍 Click Analyze
@@ -837,9 +855,9 @@ with gr.Blocks(
                 wrap=True
             )
 
-    csv_input.change(
+    dataset_input.change(
         fn      = preview_dataset,
-        inputs  = [csv_input],
+        inputs  = [dataset_input],
         outputs = [preview_col, stat_rows, stat_cols, stat_nulls, stat_mem, preview_df]
     )
 
@@ -873,7 +891,7 @@ with gr.Blocks(
 
     analyze_btn.click(
         fn      = run_eda_agent,
-        inputs  = [csv_input, goal_input],
+        inputs  = [dataset_input, goal_input],
         outputs = [insights_out, gallery_out, pdf_out]
     )
 

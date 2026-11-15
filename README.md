@@ -2,7 +2,7 @@
 
 <div align="center">
 
-**An LLM-powered Exploratory Data Analysis agent — upload any CSV, get instant statistical insights, auto-generated visualizations, and a downloadable PDF report.**
+**An LLM-powered Exploratory Data Analysis agent — upload any CSV, Excel (.xlsx), or TSV, get instant statistical insights, auto-generated visualizations, and a downloadable PDF report.**
 
 </div>
 
@@ -99,6 +99,7 @@ PDF — everything is sequential, not parallelized.*
 | `fpdf2` | ≥2.7.6 | PDF report generation and layout (incl. grid tables) |
 | `gradio` | ≥4.0.0 | Web UI — file upload, output display (tested through 6.x) |
 | `kaleido` | 0.2.1 | Exports Plotly charts to PNG for PDF embedding |
+| `openpyxl` | ≥3.1.0 | Reads Excel (.xlsx / .xls) spreadsheet workbooks |
 
 > **Note:** `kaleido` is pinned to `0.2.1` on purpose — later `1.x` releases changed the export API in a way that breaks `fig.write_image()` as used here. On Apple Silicon Macs, `0.2.1` can occasionally have install friction; if `pip install` fails for `kaleido` specifically, try `pip install kaleido==0.2.1 --no-cache-dir` or install it in a fresh virtual environment.
 
@@ -226,7 +227,7 @@ This project gave me hands-on experience with:
 - [ ] Statistical (IQR / z-score) outlier detection in the profiler, not just LLM-inferred commentary
 - [ ] Box plots and pairplots in the visualization engine
 - [ ] User-selectable target column via dropdown (instead of a fixed name list)
-- [ ] Support for Excel (.xlsx) file uploads
+- [x] Support for Excel (.xlsx) and TSV file uploads
 - [ ] Deploy on HuggingFace Spaces for public access
 - [ ] Time-series analysis module with trend detection
 - [ ] SQL database connection support

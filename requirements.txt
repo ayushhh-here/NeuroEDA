@@ -6,3 +6,4 @@ plotly>=5.0.0
 statsmodels>=0.14.0
 fpdf2>=2.7.6
 kaleido==0.2.1
+openpyxl>=3.1.0
