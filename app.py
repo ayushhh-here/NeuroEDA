@@ -712,13 +712,10 @@ def run_eda_agent(dataset_file, analysis_goal: str = "", progress=gr.Progress())
         dataset_name = os.path.splitext(
             os.path.basename(dataset_file))[0]
 
-        # Drop useless ID columns
+        # Drop purely uninformative identifier columns (avoid deleting valid features like Name or Cabin)
         drop_cols = [
             c for c in df.columns
-            if c.lower() in [
-                "id", "passengerid", "name",
-                "ticket", "cabin"
-            ]
+            if c.lower() in ["id", "passengerid"]
         ]
         df_clean = df.drop(
             columns=drop_cols, errors="ignore")
