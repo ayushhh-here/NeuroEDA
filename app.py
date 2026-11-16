@@ -71,6 +71,39 @@ def compute_top_correlations(df: pd.DataFrame, top_n: int = 8):
     return pairs[:top_n]
 
 
+def compute_iqr_outliers(df: pd.DataFrame) -> dict:
+    """
+    Computes statistical outliers for numeric columns using Tukey's IQR rule:
+    values < Q1 - 1.5 * IQR or > Q3 + 1.5 * IQR.
+    Returns a dict mapping column names to outlier count, percentage, IQR, and bounds.
+    """
+    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    outlier_info = {}
+    for col in numeric_cols:
+        series = df[col].dropna()
+        if len(series) < 4:
+            continue
+        q25 = float(series.quantile(0.25))
+        q75 = float(series.quantile(0.75))
+        iqr = q75 - q25
+        if iqr <= 0:
+            continue
+        lower_bound = round(q25 - 1.5 * iqr, 2)
+        upper_bound = round(q75 + 1.5 * iqr, 2)
+        outliers = series[(series < lower_bound) | (series > upper_bound)]
+        count = len(outliers)
+        if count > 0:
+            pct = round(count / len(series) * 100, 2)
+            outlier_info[col] = {
+                "count": count,
+                "pct": pct,
+                "lower_bound": lower_bound,
+                "upper_bound": upper_bound,
+                "iqr": round(iqr, 2)
+            }
+    return outlier_info
+
+
 def profile_dataframe(df: pd.DataFrame) -> str:
     """
     Extracts a full statistical profile from any DataFrame.
@@ -121,6 +154,18 @@ def profile_dataframe(df: pd.DataFrame) -> str:
             profile.append(f"  {c1} <-> {c2} : {val}")
     else:
         profile.append("  Not enough numeric columns to compute correlations.")
+
+    # Statistical Outliers (Tukey's IQR Method)
+    profile.append("\n=== STATISTICAL OUTLIERS (IQR METHOD) ===")
+    outliers = compute_iqr_outliers(df)
+    if outliers:
+        for col, info in outliers.items():
+            profile.append(
+                f"  {col:30s} -> {info['count']} outliers ({info['pct']}%) | "
+                f"IQR: {info['iqr']} | Normal Range: [{info['lower_bound']} to {info['upper_bound']}]"
+            )
+    else:
+        profile.append("  No statistical outliers detected (or zero variance).")
 
     # Categorical insights
     profile.append("\n=== CATEGORICAL COLUMN INSIGHTS ===")
@@ -187,8 +232,8 @@ Analyze it carefully and provide insights in this structure:
    - What relationships would you prioritize?
 
 5. ANOMALIES & OUTLIERS
-   - Which columns likely contain outliers?
-   - How might these affect analysis?
+   - Refer directly to the computed IQR outlier statistics in the profile. Which columns contain significant outliers?
+   - How might these extreme values affect analysis and modeling, and what specific treatment (capping, robust scaling, log-transform) do you recommend?
 
 Be specific. Use actual column names and numbers from the profile.
 Write in clear professional English for a business audience.
