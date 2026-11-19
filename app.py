@@ -823,7 +823,7 @@ def run_eda_agent(dataset_file,
     if dataset_file is None:
         return (
             "⚠️ Please upload a dataset file first (.csv, .xlsx, or .tsv).",
-            None, None
+            None, None, None
         )
 
     current_key = os.environ.get("NVIDIA_API_KEY", "")
@@ -834,7 +834,7 @@ def run_eda_agent(dataset_file,
             "  Linux/macOS : export NVIDIA_API_KEY=\"nvapi-xxxx\"\n"
             "  Windows     : $env:NVIDIA_API_KEY=\"nvapi-xxxx\"\n\n"
             "Get a free key at https://build.nvidia.com",
-            None, None
+            None, None, None
         )
     client.api_key = current_key
 
@@ -906,6 +906,12 @@ def run_eda_agent(dataset_file,
             target_col    = resolved_target or ""
         )
 
+        # Export preprocessed & cleaned dataset
+        cleaned_csv_path = os.path.join(
+            charts_dir, f"{dataset_name}_cleaned.csv"
+        )
+        df_clean.to_csv(cleaned_csv_path, index=False)
+
         progress(1.0, desc="Done!")
 
         # Build output text
@@ -930,14 +936,14 @@ def run_eda_agent(dataset_file,
 {'='*60}
 {hypotheses}
 """
-        return output_text, chart_paths, pdf_path
+        return output_text, chart_paths, pdf_path, cleaned_csv_path
 
     except Exception as e:
         return (
             f"❌ Error while {stage}: {str(e)}\n\n"
             "If this was an NVIDIA API call, double-check your "
             "NVIDIA_API_KEY is valid and you haven't hit a rate limit.",
-            None, None
+            None, None, None
         )
 
 
@@ -988,7 +994,7 @@ with gr.Blocks(
 3. 🎯 (Optional) Select a Target Column or add a business goal
 4. 🔍 Click Analyze
 5. 📊 Get tailored AI insights + charts
-6. 📄 Download PDF report
+6. 📄 Download PDF report & cleaned dataset
 
 **Works with any domain:**
 - 🏥 Healthcare data
@@ -1039,23 +1045,24 @@ with gr.Blocks(
                 height  = 700
             )
 
-        with gr.TabItem("📄 Download PDF Report"):
-            pdf_out = gr.File(
-                label = "⬇️ Download Full EDA Report"
-            )
+        with gr.TabItem("📄 Export & Downloads"):
+            with gr.Row():
+                pdf_out = gr.File(
+                    label = "⬇️ Download Full EDA Report (PDF)"
+                )
+                csv_out = gr.File(
+                    label = "⬇️ Download Cleaned Dataset (CSV)"
+                )
             gr.Markdown("""
-### Your PDF Report Includes:
-- ✅ Complete Dataset Profile & Statistics
-- ✅ AI-Generated EDA Insights (5 sections)
-- ✅ All Auto-Generated Visualizations
-- ✅ 5 Testable Business Hypotheses
-- ✅ Professional formatting with page numbers
+### Available Exports:
+- 📄 **PDF Report**: Complete statistical profile, AI-generated insights & hypotheses, and embedded charts.
+- 📁 **Cleaned CSV**: Preprocessed dataset with uninformative identifier columns removed, ready for downstream ML modeling.
             """)
 
     analyze_btn.click(
         fn      = run_eda_agent,
         inputs  = [dataset_input, goal_input, target_dropdown],
-        outputs = [insights_out, gallery_out, pdf_out]
+        outputs = [insights_out, gallery_out, pdf_out, csv_out]
     )
 
     gr.Markdown("""
