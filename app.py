@@ -191,7 +191,8 @@ def profile_dataframe(df: pd.DataFrame) -> str:
 
 def generate_llm_insights(data_profile: str,
                           dataset_name: str = "Dataset",
-                          analysis_goal: str = "") -> str:
+                          analysis_goal: str = "",
+                          target_col: str = "") -> str:
     """
     Sends data profile to NVIDIA LLM.
     Returns detailed EDA insights in plain English.
@@ -204,10 +205,19 @@ USER-SPECIFIED ANALYSIS GOAL:
 Please prioritize and focus your analysis, patterns, and recommendations specifically around this goal while still covering the required sections below.
 """
 
+    target_instruction = ""
+    if target_col and target_col.strip():
+        target_instruction = f"""
+PRIMARY TARGET VARIABLE:
+"{target_col.strip()}"
+Pay special attention to relationships, drivers, correlations, and predictive patterns regarding this target variable.
+"""
+
     prompt = f"""
 You are an expert Data Scientist performing Exploratory Data Analysis.
 
 Below is a complete statistical profile of the '{dataset_name}' dataset.
+{target_instruction}
 {goal_instruction}
 Analyze it carefully and provide insights in this structure:
 
@@ -264,7 +274,8 @@ Write in clear professional English for a business audience.
 def generate_hypotheses(data_profile: str,
                         llm_insights: str,
                         dataset_name: str = "Dataset",
-                        analysis_goal: str = "") -> str:
+                        analysis_goal: str = "",
+                        target_col: str = "") -> str:
     """
     Generates 5 testable business hypotheses with
     causal reasoning, confounders, and statistical tests.
@@ -277,6 +288,14 @@ USER-SPECIFIED ANALYSIS GOAL:
 Ensure the 5 hypotheses directly investigate, test, and address questions relevant to this goal.
 """
 
+    target_instruction = ""
+    if target_col and target_col.strip():
+        target_instruction = f"""
+PRIMARY TARGET VARIABLE:
+"{target_col.strip()}"
+Prioritize generating hypotheses that explain or predict variation in this target variable.
+"""
+
     prompt = f"""
 You are a senior Data Scientist analyzing the '{dataset_name}' dataset.
 
@@ -285,6 +304,7 @@ DATASET PROFILE:
 
 INITIAL INSIGHTS:
 {llm_insights}
+{target_instruction}
 {goal_instruction}
 Generate exactly 5 testable business hypotheses.
 For each hypothesis provide:
@@ -325,9 +345,10 @@ Use actual column names and statistics from the profile.
 # ============================================================
 
 def generate_visualizations(df: pd.DataFrame,
-                            output_dir: str) -> list:
+                            output_dir: str,
+                            target_col: str = None) -> list:
     """
-    Auto-generates charts based on column types.
+    Auto-generates charts based on column types and optional target column.
     Returns list of saved PNG file paths.
     """
     chart_paths  = []
@@ -336,18 +357,25 @@ def generate_visualizations(df: pd.DataFrame,
     cat_cols     = df.select_dtypes(
         include=["object", "category"]).columns.tolist()
 
-    # Detect target column — matched case-insensitively so a column
-    # named "Target", "TARGET", or "SALEPRICE" is still recognized,
-    # not just the exact casings that happened to be listed.
+    # Detect target column — user-selected or auto-detected case-insensitively
     target = None
-    _TARGET_NAMES = {"survived", "saleprice", "target"}
-    for c in df.columns:
-        if c.lower() in _TARGET_NAMES:
-            target = c
-            break
+    if target_col and target_col not in ["None", "None (Auto-detect)", ""] and target_col in df.columns:
+        target = target_col
+    else:
+        _TARGET_NAMES = {"survived", "saleprice", "target"}
+        for c in df.columns:
+            if c.lower() in _TARGET_NAMES:
+                target = c
+                break
+
+    # Prioritize target column if numeric so it appears in the distributions
+    hist_cols = list(numeric_cols)
+    if target and target in hist_cols:
+        hist_cols.remove(target)
+        hist_cols.insert(0, target)
 
     # 1. Histograms for numeric columns (max 6)
-    for col in numeric_cols[:6]:
+    for col in hist_cols[:6]:
         use_color = (
             target and
             col != target and
@@ -420,12 +448,14 @@ def generate_visualizations(df: pd.DataFrame,
         fig.write_image(path)
         chart_paths.append(path)
 
-    # 4. Scatter plot (top 2 numeric vs target)
+    # 4. Scatter plot (most correlated numeric vs target)
     # Requires a numeric target since it's plotted on the y-axis
     # with an OLS trendline.
     non_target_numeric = [c for c in numeric_cols if c != target]
     if target_is_numeric and non_target_numeric:
-        x_col = non_target_numeric[0]
+        corrs = df[non_target_numeric].apply(lambda s: df[target].corr(s)).abs()
+        valid_corrs = corrs.dropna()
+        x_col = valid_corrs.idxmax() if not valid_corrs.empty else non_target_numeric[0]
         fig = px.scatter(
             df, x=x_col, y=target,
             title  = f"{x_col} vs {target}",
@@ -552,7 +582,8 @@ def generate_pdf_report(dataset_name: str,
                         chart_paths: list,
                         output_dir: str,
                         numeric_stats: pd.DataFrame = None,
-                        analysis_goal: str = "") -> str:
+                        analysis_goal: str = "",
+                        target_col: str = "") -> str:
     """
     Generates complete EDA PDF report.
     Returns path to the saved PDF file.
@@ -574,6 +605,13 @@ def generate_pdf_report(dataset_name: str,
     pdf.cell(0, 7,
              f"Generated: {datetime.now().strftime('%B %d, %Y')}",
              new_x="LMARGIN", new_y="NEXT", align="C")
+
+    if target_col and target_col.strip():
+        pdf.ln(1)
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.set_text_color(50, 50, 50)
+        pdf.cell(0, 5, sanitize_for_pdf(f"Target Variable: {target_col.strip()}"),
+                 new_x="LMARGIN", new_y="NEXT", align="C")
 
     if analysis_goal and analysis_goal.strip():
         pdf.ln(2)
@@ -680,13 +718,15 @@ load_csv_safely = load_dataset_safely
 def preview_dataset(dataset_file):
     """
     Instantly extracts shape, missing values, memory usage,
-    and head(5) preview as soon as a dataset is uploaded.
+    and head(5) preview as soon as a dataset is uploaded,
+    and dynamically populates the target column selector.
     """
     if dataset_file is None:
         return (
             gr.update(visible=False),
             "", "", "", "",
-            pd.DataFrame()
+            pd.DataFrame(),
+            gr.update(choices=["None (Auto-detect)"], value="None (Auto-detect)")
         )
     try:
         df = load_dataset_safely(dataset_file)
@@ -701,19 +741,30 @@ def preview_dataset(dataset_file):
             mem_str = f"{mem_bytes / (1024 * 1024):.1f} MB"
 
         preview_df = df.head(5)
+
+        col_choices = ["None (Auto-detect)"] + list(df.columns)
+        default_target = "None (Auto-detect)"
+        _TARGET_NAMES = {"survived", "saleprice", "target"}
+        for col in df.columns:
+            if col.lower() in _TARGET_NAMES:
+                default_target = col
+                break
+
         return (
             gr.update(visible=True),
             f"{n_rows:,}",
             f"{n_cols:,}",
             f"{n_nulls:,} ({null_pct:.1f}%)",
             mem_str,
-            preview_df
+            preview_df,
+            gr.update(choices=col_choices, value=default_target)
         )
     except Exception as e:
         return (
             gr.update(visible=True),
             "Error", "Error", "Error", str(e),
-            pd.DataFrame()
+            pd.DataFrame(),
+            gr.update(choices=["None (Auto-detect)"], value="None (Auto-detect)")
         )
 
 
@@ -721,10 +772,14 @@ def preview_dataset(dataset_file):
 # MASTER PIPELINE FUNCTION
 # ============================================================
 
-def run_eda_agent(dataset_file, analysis_goal: str = "", progress=gr.Progress()):
+def run_eda_agent(dataset_file,
+                  analysis_goal: str = "",
+                  target_column: str = "None (Auto-detect)",
+                  progress=gr.Progress()):
     """
     Master function called by Gradio UI.
-    Runs full EDA pipeline on uploaded dataset (CSV, Excel, TSV), conditioned on an optional user goal.
+    Runs full EDA pipeline on uploaded dataset (CSV, Excel, TSV), conditioned on an optional user goal
+    and an optional target column.
     """
     if dataset_file is None:
         return (
@@ -757,10 +812,21 @@ def run_eda_agent(dataset_file, analysis_goal: str = "", progress=gr.Progress())
         dataset_name = os.path.splitext(
             os.path.basename(dataset_file))[0]
 
+        # Resolve target column
+        resolved_target = None
+        if target_column and target_column not in ["None", "None (Auto-detect)", ""] and target_column in df.columns:
+            resolved_target = target_column
+        else:
+            _TARGET_NAMES = {"survived", "saleprice", "target"}
+            for c in df.columns:
+                if c.lower() in _TARGET_NAMES:
+                    resolved_target = c
+                    break
+
         # Drop purely uninformative identifier columns (avoid deleting valid features like Name or Cabin)
         drop_cols = [
             c for c in df.columns
-            if c.lower() in ["id", "passengerid"]
+            if c.lower() in ["id", "passengerid"] and c != resolved_target
         ]
         df_clean = df.drop(
             columns=drop_cols, errors="ignore")
@@ -772,18 +838,18 @@ def run_eda_agent(dataset_file, analysis_goal: str = "", progress=gr.Progress())
         stage = "generating AI insights (NVIDIA API call)"
         progress(0.4, desc="Generating AI insights...")
         llm_insights = generate_llm_insights(
-            data_profile, dataset_name, analysis_goal)
+            data_profile, dataset_name, analysis_goal, target_col=resolved_target)
 
         stage = "generating hypotheses (NVIDIA API call)"
         progress(0.6, desc="Generating hypotheses...")
         hypotheses = generate_hypotheses(
-            data_profile, llm_insights, dataset_name, analysis_goal)
+            data_profile, llm_insights, dataset_name, analysis_goal, target_col=resolved_target)
 
         stage = "creating visualizations"
         progress(0.75, desc="Creating visualizations...")
         charts_dir = tempfile.mkdtemp()
         chart_paths = generate_visualizations(
-            df_clean, charts_dir)
+            df_clean, charts_dir, target_col=resolved_target)
 
         stage = "generating the PDF report"
         progress(0.9, desc="Generating PDF report...")
@@ -796,15 +862,17 @@ def run_eda_agent(dataset_file, analysis_goal: str = "", progress=gr.Progress())
             chart_paths   = chart_paths,
             output_dir    = charts_dir,
             numeric_stats = numeric_stats,
-            analysis_goal = analysis_goal
+            analysis_goal = analysis_goal,
+            target_col    = resolved_target or ""
         )
 
         progress(1.0, desc="Done!")
 
         # Build output text
         goal_display = f"\n🎯 Goal   : {analysis_goal.strip()}" if analysis_goal and analysis_goal.strip() else ""
+        target_display = f"\n🎯 Target : {resolved_target}" if resolved_target else ""
         output_text = f"""✅ Dataset: {dataset_name}
-📊 Shape  : {df.shape[0]} rows × {df.shape[1]} columns{goal_display}
+📊 Shape  : {df.shape[0]} rows × {df.shape[1]} columns{target_display}{goal_display}
 ⏱️ Status : Analysis Complete!
 
 {'='*60}
@@ -856,6 +924,13 @@ with gr.Blocks(
                 label      = "📁 Upload Dataset (CSV, Excel, TSV)",
                 file_types = [".csv", ".xlsx", ".xls", ".tsv", ".tab"]
             )
+            target_dropdown = gr.Dropdown(
+                label       = "🎯 Target Column (Optional)",
+                choices     = ["None (Auto-detect)"],
+                value       = "None (Auto-detect)",
+                info        = "Select a column to focus predictions, relationships, and scatter trends.",
+                interactive = True
+            )
             goal_input  = gr.Textbox(
                 label       = "🎯 Analysis Goal (Optional)",
                 placeholder = "e.g., Focus on factors driving customer churn, or identify high-risk loan applicants",
@@ -870,7 +945,7 @@ with gr.Blocks(
 **How it works:**
 1. 📁 Upload any CSV, Excel, or TSV file
 2. ⚡ Get instant data health & preview
-3. 🎯 (Optional) Add your specific business goal
+3. 🎯 (Optional) Select a Target Column or add a business goal
 4. 🔍 Click Analyze
 5. 📊 Get tailored AI insights + charts
 6. 📄 Download PDF report
@@ -900,7 +975,13 @@ with gr.Blocks(
     dataset_input.change(
         fn      = preview_dataset,
         inputs  = [dataset_input],
-        outputs = [preview_col, stat_rows, stat_cols, stat_nulls, stat_mem, preview_df]
+        outputs = [preview_col, stat_rows, stat_cols, stat_nulls, stat_mem, preview_df, target_dropdown]
+    )
+
+    dataset_input.clear(
+        fn      = preview_dataset,
+        inputs  = [dataset_input],
+        outputs = [preview_col, stat_rows, stat_cols, stat_nulls, stat_mem, preview_df, target_dropdown]
     )
 
     with gr.Tabs():
@@ -933,7 +1014,7 @@ with gr.Blocks(
 
     analyze_btn.click(
         fn      = run_eda_agent,
-        inputs  = [dataset_input, goal_input],
+        inputs  = [dataset_input, goal_input, target_dropdown],
         outputs = [insights_out, gallery_out, pdf_out]
     )
 
