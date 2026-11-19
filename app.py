@@ -346,9 +346,12 @@ Use actual column names and statistics from the profile.
 
 def generate_visualizations(df: pd.DataFrame,
                             output_dir: str,
-                            target_col: str = None) -> list:
+                            target_col: str = None,
+                            outlier_info: dict = None) -> list:
     """
-    Auto-generates charts based on column types and optional target column.
+    Auto-generates charts based on column types, outliers, and optional target column.
+    Includes histograms, outlier boxplots, categorical bar charts, correlation heatmap,
+    and target-correlation scatter plot.
     Returns list of saved PNG file paths.
     """
     chart_paths  = []
@@ -394,7 +397,43 @@ def generate_visualizations(df: pd.DataFrame,
         fig.write_image(path)
         chart_paths.append(path)
 
-    # 2. Bar charts for categorical columns (max 3)
+    # 2. Outlier Boxplots (IQR Method)
+    # Visualizes empirical Tukey's IQR outliers with quartiles and whiskers
+    outliers = outlier_info if outlier_info is not None else compute_iqr_outliers(df)
+    sorted_outlier_cols = sorted(
+        outliers.keys(),
+        key=lambda c: outliers[c]["count"],
+        reverse=True
+    )
+    box_cols = sorted_outlier_cols[:4] if sorted_outlier_cols else numeric_cols[:3]
+
+    for col in box_cols:
+        use_color = (
+            target and
+            col != target and
+            df[target].nunique() <= 5
+        )
+        if col in outliers:
+            info = outliers[col]
+            box_title = f"Outlier Boxplot: {col} ({info['count']} outliers, {info['pct']}%)"
+        else:
+            box_title = f"Distribution Boxplot: {col}"
+
+        fig = px.box(
+            df,
+            y=col,
+            x=target if use_color else None,
+            color=target if use_color else None,
+            points="outliers",
+            title=box_title
+        )
+        fig.update_layout(template="plotly_white",
+                          title_font_size=14)
+        path = os.path.join(output_dir, f"box_{col}.png")
+        fig.write_image(path)
+        chart_paths.append(path)
+
+    # 3. Bar charts for categorical columns (max 3)
     # Only average the target when it's actually numeric — a target
     # column containing strings (e.g. "Yes"/"No") would otherwise
     # blow up .mean() with a TypeError.
@@ -431,7 +470,7 @@ def generate_visualizations(df: pd.DataFrame,
             fig.write_image(path)
             chart_paths.append(path)
 
-    # 3. Correlation heatmap
+    # 4. Correlation heatmap
     if len(numeric_cols) >= 2:
         top_numeric = numeric_cols[:10]
         corr = df[top_numeric].corr().round(2)
@@ -448,7 +487,7 @@ def generate_visualizations(df: pd.DataFrame,
         fig.write_image(path)
         chart_paths.append(path)
 
-    # 4. Scatter plot (most correlated numeric vs target)
+    # 5. Scatter plot (most correlated numeric vs target)
     # Requires a numeric target since it's plotted on the y-axis
     # with an OLS trendline.
     non_target_numeric = [c for c in numeric_cols if c != target]
@@ -848,8 +887,9 @@ def run_eda_agent(dataset_file,
         stage = "creating visualizations"
         progress(0.75, desc="Creating visualizations...")
         charts_dir = tempfile.mkdtemp()
+        outliers_dict = compute_iqr_outliers(df_clean)
         chart_paths = generate_visualizations(
-            df_clean, charts_dir, target_col=resolved_target)
+            df_clean, charts_dir, target_col=resolved_target, outlier_info=outliers_dict)
 
         stage = "generating the PDF report"
         progress(0.9, desc="Generating PDF report...")
