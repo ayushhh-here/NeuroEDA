@@ -104,12 +104,54 @@ def compute_iqr_outliers(df: pd.DataFrame) -> dict:
     return outlier_info
 
 
+def recommend_imputation_strategies(df: pd.DataFrame, outlier_dict: dict = None) -> dict:
+    """
+    Analyzes columns with missing values and recommends statistical treatment:
+    - If >= 50% missing: Recommend dropping column or adding a missingness indicator.
+    - If numeric with outliers: Recommend Median imputation (robust to extreme values).
+    - If numeric without outliers: Recommend Mean imputation (symmetric distribution).
+    - If categorical/boolean: Recommend Mode imputation or 'Unknown' category.
+    """
+    if outlier_dict is None:
+        outlier_dict = compute_iqr_outliers(df)
+
+    recommendations = {}
+    null_counts = df.isnull().sum()
+    null_pct = (null_counts / len(df) * 100).round(2)
+
+    for col in df.columns:
+        if null_counts[col] > 0:
+            pct = null_pct[col]
+            count = int(null_counts[col])
+            is_num = pd.api.types.is_numeric_dtype(df[col])
+
+            if pct >= 50.0:
+                strategy = "Drop Column (High missingness >= 50%) or flag as Unknown"
+            elif is_num:
+                if col in outlier_dict and outlier_dict[col]["count"] > 0:
+                    strategy = "Impute with Median (Outliers detected; robust to skew)"
+                else:
+                    strategy = "Impute with Mean (Numeric distribution appears symmetric)"
+            else:
+                strategy = "Impute with Mode (Categorical; most frequent value or 'Unknown')"
+
+            recommendations[col] = {
+                "count": count,
+                "pct": pct,
+                "strategy": strategy
+            }
+    return recommendations
+
+
 def profile_dataframe(df: pd.DataFrame) -> str:
     """
     Extracts a full statistical profile from any DataFrame.
     Returns a clean text summary to send to the LLM.
     """
     profile = []
+
+    # Statistical Outliers (Tukey's IQR Method) computed early for reuse
+    outliers = compute_iqr_outliers(df)
 
     # Basic shape
     profile.append("=== DATASET OVERVIEW ===")
@@ -122,19 +164,16 @@ def profile_dataframe(df: pd.DataFrame) -> str:
     for col, dtype in df.dtypes.items():
         profile.append(f"  {col:30s} -> {str(dtype)}")
 
-    # Missing values
-    profile.append("\n=== MISSING VALUES ===")
-    null_counts = df.isnull().sum()
-    null_pct    = (null_counts / len(df) * 100).round(2)
-    has_nulls   = False
-    for col in df.columns:
-        if null_counts[col] > 0:
+    # Missing values & Treatment Recommendations
+    profile.append("\n=== MISSING VALUES & IMPUTATION STRATEGY ===")
+    imputation_recs = recommend_imputation_strategies(df, outliers)
+    if imputation_recs:
+        for col, info in imputation_recs.items():
             profile.append(
-                f"  {col:30s} -> {null_counts[col]} missing ({null_pct[col]}%)"
+                f"  {col:25s} -> {info['count']} missing ({info['pct']}%) | Recommendation: {info['strategy']}"
             )
-            has_nulls = True
-    if not has_nulls:
-        profile.append("  No missing values found!")
+    else:
+        profile.append("  No missing values found! (Dataset is complete)")
 
     # Numeric stats
     profile.append("\n=== NUMERIC COLUMN STATISTICS ===")
@@ -157,7 +196,6 @@ def profile_dataframe(df: pd.DataFrame) -> str:
 
     # Statistical Outliers (Tukey's IQR Method)
     profile.append("\n=== STATISTICAL OUTLIERS (IQR METHOD) ===")
-    outliers = compute_iqr_outliers(df)
     if outliers:
         for col, info in outliers.items():
             profile.append(
@@ -229,6 +267,7 @@ Analyze it carefully and provide insights in this structure:
 
 2. DATA QUALITY ISSUES
    - Which columns have missing values and how serious?
+   - Evaluate the suggested imputation strategies (Mean vs. Median vs. Mode vs. Drop).
    - Any columns that should be dropped?
    - Any data type issues?
 
