@@ -758,12 +758,13 @@ def preview_dataset(dataset_file):
     """
     Instantly extracts shape, missing values, memory usage,
     and head(5) preview as soon as a dataset is uploaded,
+    calculates a 0-100% data quality health score,
     and dynamically populates the target column selector.
     """
     if dataset_file is None:
         return (
             gr.update(visible=False),
-            "", "", "", "",
+            "", "", "", "", "",
             pd.DataFrame(),
             gr.update(choices=["None (Auto-detect)"], value="None (Auto-detect)")
         )
@@ -773,6 +774,18 @@ def preview_dataset(dataset_file):
         total_cells = n_rows * n_cols
         n_nulls = int(df.isnull().sum().sum())
         null_pct = (n_nulls / total_cells * 100) if total_cells > 0 else 0
+        n_dups = int(df.duplicated().sum())
+        dup_pct = (n_dups / n_rows * 100) if n_rows > 0 else 0
+
+        # Data Quality Score (0-100%)
+        quality_score = max(0.0, min(100.0, 100.0 - (null_pct * 1.5) - (dup_pct * 2.0)))
+        if quality_score >= 90:
+            quality_badge = f"🟢 {quality_score:.1f}% (Excellent)"
+        elif quality_score >= 75:
+            quality_badge = f"🟡 {quality_score:.1f}% (Good)"
+        else:
+            quality_badge = f"🔴 {quality_score:.1f}% (Needs Work)"
+
         mem_bytes = df.memory_usage(deep=True).sum()
         if mem_bytes < 1024 * 1024:
             mem_str = f"{mem_bytes / 1024:.1f} KB"
@@ -795,13 +808,14 @@ def preview_dataset(dataset_file):
             f"{n_cols:,}",
             f"{n_nulls:,} ({null_pct:.1f}%)",
             mem_str,
+            quality_badge,
             preview_df,
             gr.update(choices=col_choices, value=default_target)
         )
     except Exception as e:
         return (
             gr.update(visible=True),
-            "Error", "Error", "Error", str(e),
+            "Error", "Error", "Error", str(e), "Error",
             pd.DataFrame(),
             gr.update(choices=["None (Auto-detect)"], value="None (Auto-detect)")
         )
@@ -912,6 +926,18 @@ def run_eda_agent(dataset_file,
         )
         df_clean.to_csv(cleaned_csv_path, index=False)
 
+        # Compute data quality health rating
+        total_cells = df.shape[0] * df.shape[1]
+        null_pct = (df.isnull().sum().sum() / total_cells * 100) if total_cells > 0 else 0
+        dup_pct = (df.duplicated().sum() / df.shape[0] * 100) if df.shape[0] > 0 else 0
+        quality_score = max(0.0, min(100.0, 100.0 - (null_pct * 1.5) - (dup_pct * 2.0)))
+        if quality_score >= 90:
+            quality_badge = f"🟢 {quality_score:.1f}% (Excellent)"
+        elif quality_score >= 75:
+            quality_badge = f"🟡 {quality_score:.1f}% (Good)"
+        else:
+            quality_badge = f"🔴 {quality_score:.1f}% (Needs Work)"
+
         progress(1.0, desc="Done!")
 
         # Build output text
@@ -919,6 +945,7 @@ def run_eda_agent(dataset_file,
         target_display = f"\n🎯 Target : {resolved_target}" if resolved_target else ""
         output_text = f"""✅ Dataset: {dataset_name}
 📊 Shape  : {df.shape[0]} rows × {df.shape[1]} columns{target_display}{goal_display}
+🛡️ Health : {quality_badge}
 ⏱️ Status : Analysis Complete!
 
 {'='*60}
@@ -1008,10 +1035,11 @@ with gr.Blocks(
         with gr.Column(scale=2, visible=False) as preview_col:
             gr.Markdown("### 📋 Instant Dataset Preview & Health Check")
             with gr.Row():
-                stat_rows  = gr.Textbox(label="Total Rows", interactive=False)
-                stat_cols  = gr.Textbox(label="Total Columns", interactive=False)
-                stat_nulls = gr.Textbox(label="Missing Cells", interactive=False)
-                stat_mem   = gr.Textbox(label="Memory Usage", interactive=False)
+                stat_rows    = gr.Textbox(label="Total Rows", interactive=False)
+                stat_cols    = gr.Textbox(label="Total Columns", interactive=False)
+                stat_nulls   = gr.Textbox(label="Missing Cells", interactive=False)
+                stat_mem     = gr.Textbox(label="Memory Usage", interactive=False)
+                stat_quality = gr.Textbox(label="Data Quality Score", interactive=False)
             preview_df = gr.DataFrame(
                 label="Raw Data Preview (First 5 Rows)",
                 interactive=False,
@@ -1021,13 +1049,13 @@ with gr.Blocks(
     dataset_input.change(
         fn      = preview_dataset,
         inputs  = [dataset_input],
-        outputs = [preview_col, stat_rows, stat_cols, stat_nulls, stat_mem, preview_df, target_dropdown]
+        outputs = [preview_col, stat_rows, stat_cols, stat_nulls, stat_mem, stat_quality, preview_df, target_dropdown]
     )
 
     dataset_input.clear(
         fn      = preview_dataset,
         inputs  = [dataset_input],
-        outputs = [preview_col, stat_rows, stat_cols, stat_nulls, stat_mem, preview_df, target_dropdown]
+        outputs = [preview_col, stat_rows, stat_cols, stat_nulls, stat_mem, stat_quality, preview_df, target_dropdown]
     )
 
     with gr.Tabs():
