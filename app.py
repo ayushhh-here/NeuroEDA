@@ -5,6 +5,7 @@
 
 import os
 import re
+import time
 import warnings
 import tempfile
 import pandas as pd
@@ -728,7 +729,8 @@ def generate_pdf_report(dataset_name: str,
                         output_dir: str,
                         numeric_stats: pd.DataFrame = None,
                         analysis_goal: str = "",
-                        target_col: str = "") -> str:
+                        target_col: str = "",
+                        execution_time: str = "") -> str:
     """
     Generates complete EDA PDF report.
     Returns path to the saved PDF file.
@@ -750,6 +752,12 @@ def generate_pdf_report(dataset_name: str,
     pdf.cell(0, 7,
              f"Generated: {datetime.now().strftime('%B %d, %Y')}",
              new_x="LMARGIN", new_y="NEXT", align="C")
+
+    if execution_time and execution_time.strip():
+        pdf.set_font("Helvetica", "I", 8)
+        pdf.cell(0, 5,
+                 sanitize_for_pdf(f"Analysis Runtime: {execution_time.strip()}"),
+                 new_x="LMARGIN", new_y="NEXT", align="C")
 
     if target_col and target_col.strip():
         pdf.ln(1)
@@ -962,6 +970,7 @@ def run_eda_agent(dataset_file,
     # error message tells the user where the pipeline broke instead
     # of just showing a bare exception string.
     stage = "loading the dataset"
+    pipeline_start = time.perf_counter()
     try:
         progress(0.1, desc="Loading dataset...")
         df = load_dataset_safely(dataset_file)
@@ -1014,6 +1023,8 @@ def run_eda_agent(dataset_file,
         stage = "generating the PDF report"
         progress(0.9, desc="Generating PDF report...")
         numeric_stats = compute_numeric_stats(df_clean)
+        elapsed = round(time.perf_counter() - pipeline_start, 1)
+        execution_time_str = f"{elapsed}s"
         pdf_path = generate_pdf_report(
             dataset_name  = dataset_name,
             data_profile  = data_profile,
@@ -1023,7 +1034,8 @@ def run_eda_agent(dataset_file,
             output_dir    = charts_dir,
             numeric_stats = numeric_stats,
             analysis_goal = analysis_goal,
-            target_col    = resolved_target or ""
+            target_col    = resolved_target or "",
+            execution_time = execution_time_str
         )
 
         # Export preprocessed & cleaned dataset
@@ -1052,6 +1064,7 @@ def run_eda_agent(dataset_file,
         output_text = f"""✅ Dataset: {dataset_name}
 📊 Shape  : {df.shape[0]} rows × {df.shape[1]} columns{target_display}{goal_display}
 🛡️ Health : {quality_badge}
+⏱️ Runtime: {execution_time_str}
 ⏱️ Status : Analysis Complete!
 
 {'='*60}
