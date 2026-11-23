@@ -72,6 +72,33 @@ def compute_top_correlations(df: pd.DataFrame, top_n: int = 8):
     return pairs[:top_n]
 
 
+def detect_multicollinearity_risks(df: pd.DataFrame, threshold: float = 0.80) -> list:
+    """
+    Detects pairs of numeric columns with high correlation (|r| >= threshold).
+    High multicollinearity causes instability in linear models and distorts feature importance.
+    Returns a list of dicts: [{'col_a': c1, 'col_b': c2, 'r': val, 'level': 'High' | 'Severe'}]
+    """
+    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    if len(numeric_cols) < 2:
+        return []
+    corr = df[numeric_cols].corr()
+    risks = []
+    for i in range(len(numeric_cols)):
+        for j in range(i + 1, len(numeric_cols)):
+            c1, c2 = numeric_cols[i], numeric_cols[j]
+            val = corr.loc[c1, c2]
+            if pd.notna(val) and abs(val) >= threshold:
+                level = "Severe" if abs(val) >= 0.90 else "High"
+                risks.append({
+                    "col_a": c1,
+                    "col_b": c2,
+                    "r": round(float(val), 3),
+                    "level": level
+                })
+    risks.sort(key=lambda x: abs(x["r"]), reverse=True)
+    return risks
+
+
 def compute_iqr_outliers(df: pd.DataFrame) -> dict:
     """
     Computes statistical outliers for numeric columns using Tukey's IQR rule:
@@ -184,16 +211,27 @@ def profile_dataframe(df: pd.DataFrame) -> str:
     else:
         profile.append("  No numeric columns found.")
 
-    # Correlations — computed once here and reused by the PDF
-    # generator, so the LLM actually sees real correlation values
-    # instead of being asked to guess them from raw stats alone.
+    # Correlations
     profile.append("\n=== TOP CORRELATIONS ===")
     top_corr = compute_top_correlations(df)
     if top_corr:
         for c1, c2, val in top_corr:
-            profile.append(f"  {c1} <-> {c2} : {val}")
+            flag = " ⚠️ [HIGH CORRELATION]" if abs(val) >= 0.80 else ""
+            profile.append(f"  {c1} <-> {c2} : {val}{flag}")
     else:
         profile.append("  Not enough numeric columns to compute correlations.")
+
+    # Multicollinearity Risk Analysis
+    profile.append("\n=== MULTICOLLINEARITY DETECTION (|r| >= 0.80) ===")
+    multicollinear_pairs = detect_multicollinearity_risks(df, threshold=0.80)
+    if multicollinear_pairs:
+        for item in multicollinear_pairs:
+            profile.append(
+                f"  ⚠️ {item['level']} Risk: {item['col_a']} <-> {item['col_b']} (r = {item['r']}) "
+                f"| Feature redundancy detected; consider dropping one or using PCA."
+            )
+    else:
+        profile.append("  ✅ No severe multicollinearity detected (|r| < 0.80 for all numeric pairs).")
 
     # Statistical Outliers (Tukey's IQR Method)
     profile.append("\n=== STATISTICAL OUTLIERS (IQR METHOD) ===")
@@ -277,8 +315,9 @@ Analyze it carefully and provide insights in this structure:
    - Which numeric columns show high variance or skewness?
    - What do categorical distributions tell us?
 
-4. POTENTIAL CORRELATIONS TO INVESTIGATE
-   - Which column pairs are likely correlated?
+4. POTENTIAL CORRELATIONS & MULTICOLLINEARITY
+   - Which column pairs show the highest correlation?
+   - Address any flagged multicollinearity risks (|r| >= 0.80) and suggest remediation (feature pruning, PCA, regularization).
    - What relationships would you prioritize?
 
 5. ANOMALIES & OUTLIERS
