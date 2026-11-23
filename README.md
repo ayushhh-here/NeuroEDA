@@ -85,7 +85,7 @@ PDF — everything is sequential, not parallelized.*
 |  PDF & Cleaned Data Export | Download both a professionally formatted PDF report with embedded charts and a preprocessed, clean CSV ready for modeling |
 |  No-Code Web UI | Gradio interface — upload a file and click Analyze, no Python knowledge needed |
 
-> **Note:** Target-aware coloring and scatter plots adapt to whichever column you select from the **Target Column** dropdown in the UI (or auto-detect common names like `Survived`, `SalePrice`, or `target` if left on auto). For numeric targets, an OLS regression scatter plot is plotted against the most correlated feature.
+> **Note:** Target-aware coloring and scatter plots adapt to whichever column you select from the **Target Column** dropdown in the UI (or auto-detect common names like `Survived`, `SalePrice`, or `target` if left on auto). For numeric targets, an OLS regression scatter plot is plotted against the most correlated feature with automatic missing-value filtering and filename sanitization.
 >
 > **Note:** To keep reports readable, the visualization engine caps itself at histograms for the first 6 numeric columns, outlier boxplots for up to 4 columns with detected anomalies, and bar charts for the first 3 low-cardinality categorical columns (≤15 unique values). On wide datasets (e.g. House Prices' 79 feature columns) this means only a subset gets its own chart — the full statistical profile and correlation heatmap still cover every numeric column.
 

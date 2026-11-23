@@ -4,6 +4,7 @@
 # ============================================================
 
 import os
+import re
 import warnings
 import tempfile
 import pandas as pd
@@ -383,6 +384,17 @@ Use actual column names and statistics from the profile.
 # STEP 4 — AUTO VISUALIZATION ENGINE
 # ============================================================
 
+def sanitize_filename(name: str) -> str:
+    """
+    Sanitizes column and dataset names for filesystem safety.
+    Replaces slashes, colons, spaces, and other invalid path characters with underscores.
+    Prevents FileNotFoundError when column names contain characters like '/', '\', or ':'.
+    """
+    clean_name = re.sub(r'[^\w\-]', '_', str(name).strip())
+    clean_name = re.sub(r'_+', '_', clean_name).strip('_')
+    return clean_name or "feature"
+
+
 def generate_visualizations(df: pd.DataFrame,
                             output_dir: str,
                             target_col: str = None,
@@ -432,7 +444,8 @@ def generate_visualizations(df: pd.DataFrame,
         )
         fig.update_layout(template="plotly_white",
                           title_font_size=14)
-        path = os.path.join(output_dir, f"hist_{col}.png")
+        safe_col = sanitize_filename(col)
+        path = os.path.join(output_dir, f"hist_{safe_col}.png")
         fig.write_image(path)
         chart_paths.append(path)
 
@@ -468,7 +481,8 @@ def generate_visualizations(df: pd.DataFrame,
         )
         fig.update_layout(template="plotly_white",
                           title_font_size=14)
-        path = os.path.join(output_dir, f"box_{col}.png")
+        safe_col = sanitize_filename(col)
+        path = os.path.join(output_dir, f"box_{safe_col}.png")
         fig.write_image(path)
         chart_paths.append(path)
 
@@ -504,8 +518,9 @@ def generate_visualizations(df: pd.DataFrame,
                 )
             fig.update_layout(template="plotly_white",
                               title_font_size=14)
+            safe_col = sanitize_filename(col)
             path = os.path.join(
-                output_dir, f"bar_{col}.png")
+                output_dir, f"bar_{safe_col}.png")
             fig.write_image(path)
             chart_paths.append(path)
 
@@ -534,16 +549,29 @@ def generate_visualizations(df: pd.DataFrame,
         corrs = df[non_target_numeric].apply(lambda s: df[target].corr(s)).abs()
         valid_corrs = corrs.dropna()
         x_col = valid_corrs.idxmax() if not valid_corrs.empty else non_target_numeric[0]
+
+        # Safe-guard against NaNs in x_col or target causing OLS fitting failure
+        scatter_df = df[[x_col, target]].dropna()
+        has_enough_points = (
+            len(scatter_df) >= 3 and
+            scatter_df[x_col].nunique() > 1 and
+            scatter_df[target].nunique() > 1
+        )
+        use_trendline = "ols" if has_enough_points else None
+
         fig = px.scatter(
-            df, x=x_col, y=target,
+            scatter_df if has_enough_points else df,
+            x=x_col, y=target,
             title  = f"{x_col} vs {target}",
             opacity= 0.6,
-            trendline="ols"
+            trendline=use_trendline
         )
         fig.update_layout(template="plotly_white",
                           title_font_size=14)
+        safe_x = sanitize_filename(x_col)
+        safe_target = sanitize_filename(target)
         path = os.path.join(
-            output_dir, f"scatter_{x_col}_{target}.png")
+            output_dir, f"scatter_{safe_x}_{safe_target}.png")
         fig.write_image(path)
         chart_paths.append(path)
 
