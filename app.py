@@ -944,6 +944,26 @@ def preview_dataset(dataset_file):
         )
 
 
+def reset_all_fields():
+    """
+    Resets all input controls, preview cards, and output panels
+    back to their initial state.
+    """
+    return (
+        None,
+        "",
+        gr.update(choices=["None (Auto-detect)"], value="None (Auto-detect)"),
+        gr.update(visible=False),
+        "", "", "", "", "",
+        pd.DataFrame(),
+        pd.DataFrame(),
+        "",
+        [],
+        None,
+        None
+    )
+
+
 # ============================================================
 # MASTER PIPELINE FUNCTION
 # ============================================================
@@ -1137,11 +1157,19 @@ with gr.Blocks(
                 placeholder = "e.g., Focus on factors driving customer churn, or identify high-risk loan applicants",
                 lines       = 2
             )
-            analyze_btn = gr.Button(
-                "🔍 Analyze My Dataset",
-                variant = "primary",
-                size    = "lg"
-            )
+            with gr.Row():
+                analyze_btn = gr.Button(
+                    "🔍 Analyze My Dataset",
+                    variant = "primary",
+                    size    = "lg",
+                    scale   = 2
+                )
+                clear_btn = gr.Button(
+                    "🗑️ Reset All",
+                    variant = "secondary",
+                    size    = "lg",
+                    scale   = 1
+                )
             gr.Markdown("""
 **How it works:**
 1. 📁 Upload any CSV, Excel, or TSV file
@@ -1226,6 +1254,28 @@ with gr.Blocks(
         fn      = run_eda_agent,
         inputs  = [dataset_input, goal_input, target_dropdown],
         outputs = [insights_out, gallery_out, pdf_out, csv_out]
+    )
+
+    clear_btn.click(
+        fn      = reset_all_fields,
+        inputs  = [],
+        outputs = [
+            dataset_input,
+            goal_input,
+            target_dropdown,
+            preview_col,
+            stat_rows,
+            stat_cols,
+            stat_nulls,
+            stat_mem,
+            stat_quality,
+            preview_df,
+            dtypes_df,
+            insights_out,
+            gallery_out,
+            pdf_out,
+            csv_out
+        ]
     )
 
     gr.Markdown("""

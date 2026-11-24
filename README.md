@@ -76,6 +76,7 @@ PDF — everything is sequential, not parallelized.*
 |---|---|
 |  Instant Dataset Preview | Automatic health-check cards (rows, cols, missing values, memory, and 0–100% data quality score rating) and interactive 5-row raw data preview immediately upon upload |
 |  Column Data Types Panel | Collapsible schema inspector in preview displaying inferred data types for every column in the uploaded dataset |
+|  One-Click Reset & Clear | Dedicated reset button to immediately wipe uploaded files, preview cards, target configuration, and analysis outputs without reloading |
 |  Automated Statistical Profile | Schema detection, null analysis, distributions, cardinality, correlations, duplicate row count |
 |  Missing Value Strategy Recommender | Statistical imputation guidance per feature (Mean vs. outlier-robust Median vs. Mode vs. Drop for ≥50% nulls) |
 |  Multicollinearity Risk Detection | Automated identification of highly correlated feature pairs (|r| ≥ 0.80) with redundancy and variance inflation warnings |
