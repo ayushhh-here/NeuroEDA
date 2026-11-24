@@ -873,12 +873,14 @@ def preview_dataset(dataset_file):
     Instantly extracts shape, missing values, memory usage,
     and head(5) preview as soon as a dataset is uploaded,
     calculates a 0-100% data quality health score,
+    generates a column data types breakdown,
     and dynamically populates the target column selector.
     """
     if dataset_file is None:
         return (
             gr.update(visible=False),
             "", "", "", "", "",
+            pd.DataFrame(),
             pd.DataFrame(),
             gr.update(choices=["None (Auto-detect)"], value="None (Auto-detect)")
         )
@@ -908,6 +910,11 @@ def preview_dataset(dataset_file):
 
         preview_df = df.head(5)
 
+        dtypes_df = pd.DataFrame({
+            "Column": list(df.columns),
+            "Data Type": [str(t) for t in df.dtypes]
+        })
+
         col_choices = ["None (Auto-detect)"] + list(df.columns)
         default_target = "None (Auto-detect)"
         _TARGET_NAMES = {"survived", "saleprice", "target"}
@@ -924,12 +931,14 @@ def preview_dataset(dataset_file):
             mem_str,
             quality_badge,
             preview_df,
+            dtypes_df,
             gr.update(choices=col_choices, value=default_target)
         )
     except Exception as e:
         return (
             gr.update(visible=True),
             "Error", "Error", "Error", str(e), "Error",
+            pd.DataFrame(),
             pd.DataFrame(),
             gr.update(choices=["None (Auto-detect)"], value="None (Auto-detect)")
         )
@@ -1164,17 +1173,24 @@ with gr.Blocks(
                 interactive=False,
                 wrap=True
             )
+            with gr.Accordion("🔍 Column Data Types", open=True):
+                dtypes_df = gr.DataFrame(
+                    label="Column Schema & Types",
+                    interactive=False,
+                    wrap=True,
+                    height=200
+                )
 
     dataset_input.change(
         fn      = preview_dataset,
         inputs  = [dataset_input],
-        outputs = [preview_col, stat_rows, stat_cols, stat_nulls, stat_mem, stat_quality, preview_df, target_dropdown]
+        outputs = [preview_col, stat_rows, stat_cols, stat_nulls, stat_mem, stat_quality, preview_df, dtypes_df, target_dropdown]
     )
 
     dataset_input.clear(
         fn      = preview_dataset,
         inputs  = [dataset_input],
-        outputs = [preview_col, stat_rows, stat_cols, stat_nulls, stat_mem, stat_quality, preview_df, target_dropdown]
+        outputs = [preview_col, stat_rows, stat_cols, stat_nulls, stat_mem, stat_quality, preview_df, dtypes_df, target_dropdown]
     )
 
     with gr.Tabs():
