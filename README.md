@@ -86,7 +86,7 @@ PDF — everything is sequential, not parallelized.*
 |  Smart Visualizations | Histograms, outlier boxplots, correlation heatmap, bar charts, and a target-correlation scatter plot — auto-selected by data type, outliers, and target column |
 |  Dynamic Target Selection | Select any target column directly from the UI dropdown upon upload to customize predictive insights, class color-coding, and regression scatter plots |
 |  Hypothesis Generation | 5 testable, domain-relevant business hypotheses per dataset |
-|  PDF & Cleaned Data Export | Download both a professionally formatted PDF report with embedded charts and a preprocessed, clean CSV ready for modeling |
+|  Multi-Format Exports (PDF, CSV, MD) | Download a formatted PDF report with charts, preprocessed clean CSV ready for modeling, and raw Markdown summary (.md) for note-taking |
 |  No-Code Web UI | Gradio interface — upload a file and click Analyze, no Python knowledge needed |
 
 > **Note:** Target-aware coloring and scatter plots adapt to whichever column you select from the **Target Column** dropdown in the UI (or auto-detect common names like `Survived`, `SalePrice`, or `target` if left on auto). For numeric targets, an OLS regression scatter plot is plotted against the most correlated feature with automatic missing-value filtering and filename sanitization.

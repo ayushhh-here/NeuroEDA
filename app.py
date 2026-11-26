@@ -960,6 +960,7 @@ def reset_all_fields():
         "",
         [],
         None,
+        None,
         None
     )
 
@@ -1111,14 +1112,21 @@ def run_eda_agent(dataset_file,
 {'='*60}
 {hypotheses}
 """
-        return output_text, chart_paths, pdf_path, cleaned_csv_path
+        # Export markdown summary
+        md_summary_path = os.path.join(
+            charts_dir, f"{dataset_name}_summary.md"
+        )
+        with open(md_summary_path, "w", encoding="utf-8") as f:
+            f.write(output_text)
+
+        return output_text, chart_paths, pdf_path, cleaned_csv_path, md_summary_path
 
     except Exception as e:
         return (
             f"❌ Error while {stage}: {str(e)}\n\n"
             "If this was an NVIDIA API call, double-check your "
             "NVIDIA_API_KEY is valid and you haven't hit a rate limit.",
-            None, None, None
+            None, None, None, None
         )
 
 
@@ -1244,16 +1252,20 @@ with gr.Blocks(
                 csv_out = gr.File(
                     label = "⬇️ Download Cleaned Dataset (CSV)"
                 )
+                md_out = gr.File(
+                    label = "⬇️ Download Insights Summary (.md)"
+                )
             gr.Markdown("""
 ### Available Exports:
 - 📄 **PDF Report**: Complete statistical profile, AI-generated insights & hypotheses, and embedded charts.
 - 📁 **Cleaned CSV**: Preprocessed dataset with uninformative identifier columns removed, ready for downstream ML modeling.
+- 📝 **Markdown Summary**: Full analysis text, data profile, and business hypotheses for Notion, Obsidian, or documentation.
             """)
 
     analyze_btn.click(
         fn      = run_eda_agent,
         inputs  = [dataset_input, goal_input, target_dropdown],
-        outputs = [insights_out, gallery_out, pdf_out, csv_out]
+        outputs = [insights_out, gallery_out, pdf_out, csv_out, md_out]
     )
 
     clear_btn.click(
@@ -1274,7 +1286,8 @@ with gr.Blocks(
             insights_out,
             gallery_out,
             pdf_out,
-            csv_out
+            csv_out,
+            md_out
         ]
     )
 
