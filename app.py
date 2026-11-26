@@ -1213,8 +1213,7 @@ with gr.Blocks(
                 dtypes_df = gr.DataFrame(
                     label="Column Schema & Types",
                     interactive=False,
-                    wrap=True,
-                    height=200
+                    wrap=True
                 )
 
     dataset_input.change(
